@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>儿童卡 - 银行储蓄卡生成系统</title>
+  <!-- 引入 Supabase SDK、二维码生成库、以及网页转图片下载库 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif; }
+    body { background: #f0f4f8; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+    
+    .card-box { background: white; width: 100%; max-width: 480px; margin: 10px auto; border-radius: 16px; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+    h2 { color: #065f46; margin-top: 0; text-align: center; }
+    p.subtitle { color: #64748b; font-size: 14px; text-align: center; margin-bottom: 20px; }
+    
+    .input-group { text-align: left; margin-bottom: 15px; }
+    label { font-size: 14px; font-weight: bold; color: #334155; display: block; margin-bottom: 5px; }
+    input, select { width: 100%; padding: 12px 14px; font-size: 16px; border: 2px solid #cbd5e1; border-radius: 10px; outline: none; transition: 0.2s; background: white; }
+    input:focus, select:focus { border-color: #10b981; }
+    
+    button { width: 100%; padding: 14px; font-size: 16px; font-weight: bold; color: white; border: none; border-radius: 10px; cursor: pointer; transition: 0.2s; }
+    .btn-green { background-color: #10b981; }
+    .btn-green:hover { background-color: #059669; }
+    
+    /* 💳 翡翠绿高质感“储蓄卡/银行卡”样式 */
+    .debit-card-preview {
+      width: 380px;
+      height: 230px;
+      background: linear-gradient(135deg, #064e3b 0%, #059669 50%, #34d399 100%);
+      border-radius: 16px;
+      padding: 20px;
+      color: #ffffff;
+      position: relative;
+      box-shadow: 0 8px 24px rgba(5, 150, 105, 0.35);
+      border: 2px solid #ffffff;
+      margin: 20px auto;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    
+    .card-header { display: flex; justify-content: space-between; align-items: center; }
+    .card-title { font-size: 16px; font-weight: 800; color: #ecfdf5; letter-spacing: 1px; }
+    .card-chip { width: 38px; height: 28px; background: linear-gradient(135deg, #fcd34d, #f59e0b); border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    
+    .card-body { display: flex; justify-content: space-between; align-items: center; margin-top: 5px; }
+    .card-info { flex: 1; text-align: left; }
+    .info-label { font-size: 10px; color: #a7f3d0; text-transform: uppercase; margin-bottom: 2px; font-weight: bold; }
+    .info-val { font-size: 16px; font-weight: bold; color: #ffffff; margin-bottom: 8px; }
+    .limit-val { font-size: 22px; font-weight: 800; color: #fef08a; }
+    
+    .qrcode-box { background: white; padding: 6px; border-radius: 8px; display: flex; justify-content: center; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    
+    .card-footer { display: flex; justify-content: space-between; align-items: flex-end; font-size: 11px; color: #a7f3d0; font-family: monospace; font-weight: bold; }
+    
+    .btn-download { width: 380px; padding: 12px; font-size: 15px; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 10px auto 0 auto; display: block; }
+    .btn-download:hover { background: #2563eb; }
+  </style>
+</head>
+<body>
+
+  <!-- 1. 表单区域 -->
+  <div class="card-box">
+    <h2>💳 储蓄卡 - 绑定生成终端</h2>
+    <p class="subtitle">输入小朋友姓名、组别和初始存款金额，生成专属储蓄卡</p>
+    
+    <div class="input-group">
+      <label>👦 小朋友姓名：</label>
+      <input type="text" id="studentName" placeholder="例如: 张小明">
+    </div>
+
+    <div class="input-group">
+      <label>🏷️ 所属组别：</label>
+      <input type="text" id="studentGroup" placeholder="例如: 第1组 / 红队 / A班">
+    </div>
+
+    <!-- 🌟 存储目标选择框：已增加至 5 个选项 -->
+    <div class="input-group">
+      <label>🏦 选择上传至哪个服务器：</label>
+      <select id="targetServer">
+        <option value="1">🏦 银行卡一</option>
+        <option value="2">🏦 银行卡二</option>
+        <option value="3">🏦 银行卡三</option>
+        <option value="4">🏦 银行卡四</option>
+        <option value="5">🏦 银行卡五</option>
+      </select>
+    </div>
+
+    <div class="input-group">
+      <label>💰 初始充值面额 ($)：</label>
+      <input type="number" id="initAmount" placeholder="例如: 100">
+    </div>
+
+    <button class="btn-green" onclick="createCloudCard()">🚀 生成专属储蓄卡 (自动下载)</button>
+  </div>
+
+  <!-- 2. 精美储蓄卡展示与下载区 -->
+  <div id="printableCardArea" style="display: none; text-align: center;">
+    <div class="debit-card-preview" id="debitCardElement">
+      <div class="card-header">
+        <span class="card-title">🏦 假日理财营 · 储蓄卡</span>
+        <div class="card-chip"></div>
+      </div>
+      
+      <div class="card-body">
+        <div class="card-info">
+          <div class="info-label">持卡人姓名</div>
+          <div class="info-val" id="displayStudent">--</div>
+          <div class="info-label">所属组别</div>
+          <div class="info-val" id="displayGroup">--</div>
+          <div class="info-label">账户初始余额</div>
+          <div class="limit-val" id="displayBalance">$0</div>
+        </div>
+        
+        <!-- 二维码 -->
+        <div class="qrcode-box" id="qrcode"></div>
+      </div>
+      
+      <div class="card-footer">
+        <span id="displayCardId">CARD_0000000000000</span>
+        <span>DEBIT CARD</span>
+      </div>
+    </div>
+    
+    <button class="btn-download" onclick="downloadImage()">📥 手动重新下载储蓄卡图片</button>
+  </div>
+
+  <script>
+    // 🔗 配置 5 个不同的 Supabase 数据库客户端
+    const db1 = window.supabase.createClient(
+      "https://bordebgadadndigkrtyg.supabase.co", 
+      "sb_publishable_4mGYVgUNCvkYn84lImKqGQ_fh3fPdpc"
+    );
+
+    const db2 = window.supabase.createClient(
+      "https://dszfteurwumqkxyjgojk.supabase.co", 
+      "sb_publishable_tfRHs8PMe3RN41oJuCvCdA_d65khki3"
+    );
+
+    const db3 = window.supabase.createClient(
+      "https://ppagglcjeepkepugkdum.supabase.co", 
+      "sb_publishable_IGYWAqLOjOyKTx2r0kzxtQ_R0Vce4Ur"
+    );
+
+    const db4 = window.supabase.createClient(
+      "https://ldndtawxdxtwpeomjjot.supabase.co", 
+      "sb_publishable_7hudCBiI3RWBr-WImlHaVg_G05dFpH6"
+    );
+
+    const db5 = window.supabase.createClient(
+      "https://vrbgolvlbzynuevhgyao.supabase.co", 
+      "sb_publishable_7swrWsVy2yLNpEmWVBRfNA_zPquKkYF"
+    );
+
+    let currentFileName = "儿童储蓄卡";
+
+    async function createCloudCard() {
+      const name = document.getElementById('studentName').value.trim();
+      const group = document.getElementById('studentGroup').value.trim();
+      const amtInput = document.getElementById('initAmount').value;
+      const amt = parseFloat(amtInput);
+      const serverChoice = document.getElementById('targetServer').value;
+
+      if (!name) return alert("⚠️ 请输入小朋友的姓名！");
+      if (!group) return alert("⚠️ 请输入所属组别！");
+      if (isNaN(amt) || amt <= 0) return alert("⚠️ 请输入有效的初始金额！");
+
+      // 🎯 根据选择框决定写入哪个数据库
+      let db;
+      let bankLabel = "银行卡一";
+      if (serverChoice === "1") {
+        db = db1;
+        bankLabel = "银行卡一";
+      } else if (serverChoice === "2") {
+        db = db2;
+        bankLabel = "银行卡二";
+      } else if (serverChoice === "3") {
+        db = db3;
+        bankLabel = "银行卡三";
+      } else if (serverChoice === "4") {
+        db = db4;
+        bankLabel = "银行卡四";
+      } else if (serverChoice === "5") {
+        db = db5;
+        bankLabel = "银行卡五";
+      }
+
+      const cardId = "CARD_" + Date.now();
+      currentFileName = `儿童储蓄卡_${bankLabel}_${group}_${name}_${amt}元`;
+
+      try {
+        // 1. 写入 cards 主表
+        const { error: cardError } = await db
+          .from('cards')
+          .insert([{ id: cardId, name: name, group_name: group, balance: amt }]);
+
+        if (cardError) {
+          alert(`❌ [${bankLabel}] 写入卡片失败: ` + cardError.message);
+          return;
+        }
+
+        // 2. 写入 transactions 流水表
+        const { error: txError } = await db
+          .from('transactions')
+          .insert([{
+            card_id: cardId,
+            student_name: name,
+            group_name: group,
+            amount: amt,
+            item: "开卡初始充值"
+          }]);
+
+        if (txError) console.error("⚠️ 流水写入失败:", txError.message);
+
+        // 3. 更新卡片上的可视化文字
+        document.getElementById('displayStudent').innerText = name;
+        document.getElementById('displayGroup').innerText = group;
+        document.getElementById('displayBalance').innerText = '$' + amt;
+        document.getElementById('displayCardId').innerText = cardId;
+
+        // 4. 生成二维码
+        const qrContainer = document.getElementById('qrcode');
+        qrContainer.innerHTML = "";
+        new QRCode(qrContainer, {
+          text: cardId,
+          width: 90,
+          height: 90
+        });
+
+        // 5. 显示高清卡片
+        document.getElementById('printableCardArea').style.display = "block";
+
+        // 6. 自动渲染整张卡片并下载 PNG
+        setTimeout(() => {
+          downloadImage();
+        }, 300);
+
+      } catch (err) {
+        alert("❌ 发生网络错误: " + err.message);
+      }
+    }
+
+    function downloadImage() {
+      const cardElement = document.getElementById('debitCardElement');
+      
+      html2canvas(cardElement, {
+        scale: 3,             // 3倍清晰度，打印出来不糊
+        useCORS: true,
+        backgroundColor: null
+      }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = `${currentFileName}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      });
+    }
+  </script>
+</body>
+</html>
